@@ -1700,6 +1700,12 @@
             }
           });
 
+          // [V2.9] Sincroniza la casilla de valor con el tipo de carga elegido
+          document.addEventListener('change', (event) => {
+            const slot = event.target.closest('[data-load-slot]');
+            if (slot) this.routines.syncLoadSlot(slot.dataset.loadSlot);
+          });
+
           // [V2.9] Auto-guardado al pasar la app a segundo plano o descargarse
           document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') this.focus.autoSave();
