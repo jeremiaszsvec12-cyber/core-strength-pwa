@@ -2016,8 +2016,152 @@
               <strong>Disponibilidad: ${intensity}%</strong>
               <p>${message}</p>
               ${isFemale && phase ? `<p>Fase: ${phaseLabel}. Reducción por fase: ${phaseReduction}%. Reducción total: ${totalReduction}%.</p>` : ''}
+              <div class="actions"><button class="btn good" data-action="start-with-intensity">▶ Iniciar entrenamiento al ${intensity}%</button></div>
             `;
             result.hidden = false;
+          },
+
+          // [V2.9] Arranca la rutina aplicando la intensidad calculada a todas las cargas
+          startWithIntensity() {
+            const intensity = NG.state.readiness?.intensity;
+            if (!intensity) {
+              NG.toast('Calcula primero tu disponibilidad');
+              return;
+            }
+            const routines = NG.state.user.routines;
+            if (!routines.length) {
+              NG.toast('Crea una rutina antes de entrenar');
+              return;
+            }
+            const todays = NG.logic.routinesForDate ? NG.logic.routinesForDate(new Date()) : [];
+            const routine = (todays && todays[0]) || routines[0];
+            this.close();
+            NG.focus.start(routine, { intensityOverride: intensity });
+            NG.toast(`Entrenamiento iniciado al ${intensity}%`);
+          }
+        },
+
+        // [V2.9] Gráficos ligeros dibujados en canvas (sin librerías externas)
+        charts: {
+          openMaximum(max) {
+            const history = (Array.isArray(max.history) && max.history.length
+              ? max.history
+              : [{ value: max.value, date: max.updatedAt }]
+            ).slice(-30);
+            $('#chart-modal-title').textContent = `Evolución · ${max.name}`;
+            const first = history[0].value;
+            const last = history[history.length - 1].value;
+            const diff = last - first;
+            const better = max.improvementDirection === 'lower' ? diff < 0 : diff > 0;
+            $('#chart-modal-meta').textContent = history.length > 1
+              ? `${history.length} registros · ${better ? 'Mejora' : 'Variación'} de ${NG.format.maxValue(Math.abs(diff), max.kind)} desde el inicio.`
+              : 'Solo hay un registro. Guarda nuevos valores para ver la evolución.';
+            $('#chart-modal').hidden = false;
+            requestAnimationFrame(() => this.draw($('#max-chart'), history, max));
+          },
+
+          draw(canvas, history, max) {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = Math.max(280, rect.width) * dpr;
+            canvas.height = Math.max(220, rect.height) * dpr;
+            const ctx = canvas.getContext('2d');
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            const w = canvas.width / dpr;
+            const h = canvas.height / dpr;
+            ctx.clearRect(0, 0, w, h);
+
+            const pad = { l: 52, r: 16, t: 18, b: 34 };
+            const values = history.map((point) => Number(point.value) || 0);
+            const min = Math.min(...values);
+            const maxV = Math.max(...values);
+            const span = (maxV - min) || Math.max(1, maxV * 0.1);
+            const lo = min - span * 0.15;
+            const hi = maxV + span * 0.15;
+            const x = (i) => pad.l + (history.length === 1 ? (w - pad.l - pad.r) / 2 : (i / (history.length - 1)) * (w - pad.l - pad.r));
+            const y = (v) => pad.t + (1 - (v - lo) / (hi - lo)) * (h - pad.t - pad.b);
+
+            ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+            ctx.fillStyle = 'rgba(255,255,255,0.55)';
+            ctx.font = '11px system-ui, sans-serif';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i += 1) {
+              const value = lo + ((hi - lo) * i) / 4;
+              const py = y(value);
+              ctx.beginPath();
+              ctx.moveTo(pad.l, py);
+              ctx.lineTo(w - pad.r, py);
+              ctx.stroke();
+              ctx.fillText(NG.format.maxValue(value, max.kind), 6, py + 4);
+            }
+
+            const grad = ctx.createLinearGradient(0, pad.t, 0, h - pad.b);
+            grad.addColorStop(0, 'rgba(0, 229, 255, 0.38)');
+            grad.addColorStop(1, 'rgba(0, 229, 255, 0.02)');
+            ctx.beginPath();
+            history.forEach((point, i) => (i ? ctx.lineTo(x(i), y(point.value)) : ctx.moveTo(x(i), y(point.value))));
+            ctx.lineTo(x(history.length - 1), h - pad.b);
+            ctx.lineTo(x(0), h - pad.b);
+            ctx.closePath();
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            ctx.beginPath();
+            history.forEach((point, i) => (i ? ctx.lineTo(x(i), y(point.value)) : ctx.moveTo(x(i), y(point.value))));
+            ctx.strokeStyle = '#00e5ff';
+            ctx.lineWidth = 2.5;
+            ctx.shadowColor = 'rgba(0,229,255,0.8)';
+            ctx.shadowBlur = 10;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            history.forEach((point, i) => {
+              ctx.beginPath();
+              ctx.arc(x(i), y(point.value), 4, 0, Math.PI * 2);
+              ctx.fillStyle = '#ffe56b';
+              ctx.fill();
+            });
+
+            ctx.fillStyle = 'rgba(255,255,255,0.55)';
+            const firstDate = (history[0].date || '').slice(0, 10);
+            const lastDate = (history[history.length - 1].date || '').slice(0, 10);
+            ctx.fillText(firstDate, pad.l, h - 12);
+            const lastWidth = ctx.measureText(lastDate).width;
+            if (history.length > 1) ctx.fillText(lastDate, w - pad.r - lastWidth, h - 12);
+          }
+        },
+
+        // [V2.9] Sistema de logros por racha con medallas, confeti y fanfarrias
+        achievements: {
+          MILESTONES: [
+            { key: 'bronze', days: 7, icon: '🥉', label: 'Bronce', title: '¡Medalla de Bronce!', text: '7 días seguidos entrenando. La constancia ya es tuya.' },
+            { key: 'silver', days: 15, icon: '🥈', label: 'Plata', title: '¡Medalla de Plata!', text: '15 días seguidos. Tu disciplina es de élite.' },
+            { key: 'gold', days: 30, icon: '🥇', label: 'Oro', title: '¡Medalla de Oro!', text: '30 días seguidos. Corazón de Élite absoluto.' }
+          ],
+
+          checkPending() {
+            const a = NG.logic.refreshAchievements();
+            const pending = this.MILESTONES.filter((m) => a.currentStreak >= m.days && !a.milestonesShown[m.key]);
+            if (!pending.length) return;
+            const milestone = pending[pending.length - 1];
+            pending.forEach((m) => { a.milestonesShown[m.key] = true; });
+            NG.storage.save();
+            this.celebrate(milestone);
+          },
+
+          celebrate(milestone) {
+            $('#medal-badge').textContent = milestone.icon;
+            $('#medal-title').textContent = milestone.title;
+            $('#medal-text').textContent = milestone.text;
+            $('#medal-modal').hidden = false;
+            NG.ui.confetti();
+            const fanfares = { bronze: 'fanfareBronze', silver: 'fanfareSilver', gold: 'fanfareGold' };
+            NG.audio[fanfares[milestone.key]]?.();
+            if (navigator.vibrate) {
+              const patterns = { bronze: [40, 60, 40], silver: [60, 60, 60, 60, 120], gold: [80, 60, 80, 60, 200] };
+              try { navigator.vibrate(patterns[milestone.key]); } catch (error) { /* sin vibración */ }
+            }
+            NG.render.achievements();
           }
         },
 
@@ -3189,6 +3333,9 @@
               const save = NG.ui.button('Guardar', 'good', () => {
                 max.value = Number($(`[data-max-input="${max.id}"]`).value) || 0;
                 max.updatedAt = nowIso();
+                // [V2.9] Registra el punto en el historial para el gráfico
+                if (!Array.isArray(max.history)) max.history = [];
+                max.history.push({ value: max.value, date: max.updatedAt });
                 NG.storage.save();
                 NG.render.maxima();
                 NG.render.progress();
@@ -3201,7 +3348,8 @@
                 NG.render.progress();
                 NG.toast('Máximo borrado');
               });
-              actions.append(save, remove);
+              const chart = NG.ui.button('📈 Ver gráfico', 'ghost', () => NG.charts.openMaximum(max)); // [V2.9]
+              actions.append(save, chart, remove);
               tr.lastElementChild.appendChild(actions);
               tbody.appendChild(tr);
             });
