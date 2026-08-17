@@ -1778,6 +1778,7 @@
 
         renderAll() {
           this.render.home();
+          this.render.achievements(); // [V2.9]
           this.render.sportControls();
           this.render.selects();
           this.render.training();
@@ -2772,20 +2773,11 @@
               const wNote = f.routine.warmupNote;
               $('#focus-title').textContent = wNote || 'Calentamiento';
             } else {
+              // [V2.9] Carga combinada de hasta dos tipos, escalada por intensidad
               let calcLabel = '';
               if (f.phase === 'work') {
-                const maxVal = NG.logic.findMaximumValue(ex.name, ex.loadType === 'percent_time' ? 'time' : 'strength');
-                if (ex.loadType === 'percent_1rm' && maxVal > 0) {
-                  const calculated = (maxVal * (ex.loadValue / 100)).toFixed(1);
-                  calcLabel = ` con ${calculated} kg (${ex.loadValue}% de tu 1RM de ${maxVal.toFixed(1)} kg)`;
-                } else if (ex.loadType === 'percent_time' && maxVal > 0) {
-                  const calculatedTime = (maxVal * (ex.loadValue / 100));
-                  calcLabel = ` con ${NG.format.seconds(calculatedTime)} (${ex.loadValue}% de tu Record de ${NG.format.seconds(maxVal)})`;
-                } else if (ex.loadType === 'absolute_kg') {
-                  calcLabel = ` con ${ex.loadValue} kg`;
-                } else if (ex.loadType === 'bodyweight') {
-                  calcLabel = ` con peso corporal`;
-                }
+                const described = NG.logic.describeLoad(ex, f.intensityOverride).text;
+                if (described) calcLabel = ` con ${described}`;
               }
               $('#focus-title').textContent = `${ex.name}${calcLabel}`;
             }
@@ -2819,19 +2811,44 @@
             } else {
               const remaining = ex.sets - f.completedSets[f.exerciseIndex];
               const rests = Math.max(0, remaining - 1);
-              const typeLabel = isTime ? `${Number(ex.loadValue) || 0}s TUT` : `${ex.reps} reps`;
+              const typeLabel = isTime ? `${this.workSeconds(ex)}s TUT` : `${ex.reps} reps`;
               const metaParts = [];
               if (f.phase === 'rest') metaParts.push('⏱ Descansando…');
               metaParts.push(`Series: ${remaining} de ${ex.sets}`);
               metaParts.push(`Descansos: ${rests}`);
               metaParts.push(typeLabel);
+              if (f.intensityOverride) metaParts.push(`⚡ Intensidad ajustada: ${f.intensityOverride}%`); // [V2.9]
               $('#focus-meta').textContent = metaParts.join(' · ');
+            }
+            // [V2.9] Recordatorio de intensidad también en fases sin ejercicio
+            if ((f.phase === 'cooldown' || f.phase === 'warmup') && f.intensityOverride) {
+              $('#focus-meta').textContent = `${f.routine.name} · ⚡ Intensidad ajustada: ${f.intensityOverride}%`;
             }
           }
         },
 
         render: {
+          // [V2.9] Panel de Logros en Inicio
+          achievements() {
+            const panel = $('#achievements-panel');
+            if (!panel) return;
+            const a = NG.logic.refreshAchievements();
+            $('#streak-count').textContent = a.currentStreak;
+            $('#achievement-best').textContent = `Mejor racha: ${a.bestStreak}`;
+            panel.classList.toggle('on-fire', a.currentStreak >= 1);
+            const row = $('#medal-row');
+            row.innerHTML = '';
+            NG.achievements.MILESTONES.forEach((milestone) => {
+              const chip = document.createElement('span');
+              const unlocked = a.currentStreak >= milestone.days || a.bestStreak >= milestone.days;
+              chip.className = `medal-chip ${unlocked ? '' : 'locked'}`;
+              chip.textContent = `${milestone.icon} ${milestone.label} · ${milestone.days} días`;
+              row.appendChild(chip);
+            });
+          },
+
           home() {
+            this.achievements(); // [V2.9]
             const reminder = $('#cycle-reminder');
             const phase = NG.logic.menstrualPhase(new Date());
             if (NG.state.user.profile.sex !== 'female' || !phase) {
@@ -3259,6 +3276,8 @@
               cell.style.minHeight = '180px';
               cell.style.padding = '18px';
               if (dateKey === todayStr) cell.classList.add('today');
+              // [V2.9] Día de menstruación en rojo (vista diaria)
+              if (NG.state.user.profile.sex === 'female' && NG.logic.menstrualPhase(date) === 'Menstrual') cell.classList.add('menstrual');
 
               const num = document.createElement('div');
               num.className = 'day-num';
@@ -3305,6 +3324,8 @@
               cell.classList.add('out');
             }
             if (dateKey === todayStr) cell.classList.add('today');
+            // [V2.9] Día de menstruación en rojo (celda completa)
+            if (NG.state.user.profile.sex === 'female' && NG.logic.menstrualPhase(date) === 'Menstrual') cell.classList.add('menstrual');
 
             const num = document.createElement('div');
             num.className = 'day-num';
@@ -3637,19 +3658,52 @@
         },
 
         backup: {
-          export() {
+          // [V2.9] Exportación compatible con Android: Web Share API + Blob, sin URI data:
+          async export() {
+            const fileName = `CorazonDeElite_Respaldo_${isoDate()}.json`;
             try {
               const dataStr = JSON.stringify(NG.state.user, null, 2);
-              const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
-              const exportFileDefaultName = `CorazonDeElite_Respaldo_${isoDate()}.json`;
+              const blob = new Blob([dataStr], { type: 'application/json' });
+
+              // 1) Mecanismo primario en móviles: hoja nativa de compartir/guardar
+              try {
+                if (typeof File === 'function' && navigator.canShare) {
+                  const file = new File([blob], fileName, { type: 'application/json' });
+                  if (navigator.canShare({ files: [file] })) {
+                    await navigator.share({
+                      files: [file],
+                      title: 'Respaldo Corazón de Élite',
+                      text: 'Backup de datos'
+                    });
+                    NG.toast('📤 Respaldo compartido');
+                    return;
+                  }
+                }
+              } catch (shareError) {
+                if (shareError && shareError.name === 'AbortError') {
+                  NG.toast('Exportación cancelada');
+                  return;
+                }
+                console.warn('Web Share no disponible, usando descarga', shareError);
+              }
+
+              // 2) Fallback: descarga por Blob + objectURL
+              const url = URL.createObjectURL(blob);
               const linkElement = document.createElement('a');
-              linkElement.setAttribute('href', dataUri);
-              linkElement.setAttribute('download', exportFileDefaultName);
+              linkElement.href = url;
+              linkElement.download = fileName;
+              linkElement.rel = 'noopener';
+              linkElement.style.display = 'none';
+              document.body.appendChild(linkElement);
               linkElement.click();
+              setTimeout(() => {
+                URL.revokeObjectURL(url);
+                linkElement.remove();
+              }, 1500);
               NG.toast('📤 Datos exportados con éxito');
             } catch (error) {
               console.error('Error al exportar', error);
-              NG.toast('Error al exportar tus datos');
+              NG.toast('No se pudo exportar. Revisa permisos de almacenamiento e inténtalo otra vez.');
             }
           },
 
@@ -3675,6 +3729,7 @@
               }
             };
             fileReader.readAsText(file);
+            event.target.value = ''; // [V2.9] permite reimportar el mismo archivo en Android
           }
         },
 
@@ -3998,6 +4053,63 @@
               osc.connect(gain).connect(ctx.destination);
               osc.start(start); osc.stop(start + dur + 0.05);
             });
+          },
+
+          // [V2.9] Fanfarrias progresivas para las medallas
+          playSequence(seq, type = 'triangle', volume = 0.1) {
+            if (!NG.state.audio.enabled) return;
+            const ctx = this.ensureContext();
+            const now = ctx.currentTime + 0.05;
+            seq.forEach(({ freq, t, dur, vol }) => {
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = type;
+              osc.frequency.value = freq;
+              const start = now + t;
+              gain.gain.setValueAtTime(0.001, start);
+              gain.gain.exponentialRampToValueAtTime(vol || volume, start + 0.02);
+              gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+              osc.connect(gain).connect(ctx.destination);
+              osc.start(start);
+              osc.stop(start + dur + 0.05);
+            });
+          },
+
+          fanfareBronze() {
+            this.playSequence([
+              { freq: 523.25, t: 0, dur: 0.18 },
+              { freq: 659.25, t: 0.18, dur: 0.18 },
+              { freq: 783.99, t: 0.36, dur: 0.45 }
+            ], 'triangle', 0.09);
+          },
+
+          fanfareSilver() {
+            this.playSequence([
+              { freq: 523.25, t: 0, dur: 0.16 }, { freq: 659.25, t: 0.16, dur: 0.16 },
+              { freq: 783.99, t: 0.32, dur: 0.16 }, { freq: 1046.5, t: 0.48, dur: 0.22 },
+              { freq: 987.77, t: 0.7, dur: 0.18 }, { freq: 1174.66, t: 0.88, dur: 0.55 }
+            ], 'triangle', 0.1);
+            this.playSequence([
+              { freq: 261.63, t: 0, dur: 0.4 }, { freq: 392.0, t: 0.48, dur: 0.9 }
+            ], 'sawtooth', 0.045);
+          },
+
+          fanfareGold() {
+            this.playSequence([
+              { freq: 523.25, t: 0, dur: 0.14 }, { freq: 659.25, t: 0.14, dur: 0.14 },
+              { freq: 783.99, t: 0.28, dur: 0.14 }, { freq: 1046.5, t: 0.42, dur: 0.2 },
+              { freq: 1318.51, t: 0.62, dur: 0.2 }, { freq: 1567.98, t: 0.82, dur: 0.26 },
+              { freq: 1318.51, t: 1.08, dur: 0.16 }, { freq: 2093.0, t: 1.24, dur: 0.9 }
+            ], 'triangle', 0.11);
+            this.playSequence([
+              { freq: 130.81, t: 0, dur: 0.5 }, { freq: 196.0, t: 0.5, dur: 0.5 },
+              { freq: 261.63, t: 1.0, dur: 1.2 }
+            ], 'sawtooth', 0.05);
+            this.playSequence([
+              { freq: 659.25, t: 0.3, dur: 0.6 }, { freq: 830.61, t: 0.9, dur: 0.6 },
+              { freq: 1046.5, t: 1.3, dur: 0.9 }
+            ], 'square', 0.03);
+            [0, 0.42, 0.84, 1.26].forEach((offset) => this.kick(offset));
           },
 
           startSynth(track) {
