@@ -585,6 +585,40 @@
     /* [V2.9] Grafico */
     .chart-wrap { position: relative; height: 320px; width: 100%; }
     .intensity-pill { color: #fff3bd; border-color: rgba(255, 229, 107, 0.6); background: rgba(255, 229, 107, 0.14); }
+
+    /* [V3.0] Cabeceras internas centradas y tematizadas */
+    .page-head.section-head { justify-items: center; text-align: center; }
+    .page-head.section-head h2 {
+      font-size: 2.4rem; letter-spacing: 0.05em; text-transform: uppercase; font-weight: 950;
+      color: var(--head-color, var(--pink)); text-shadow: 0 0 14px var(--head-glow, rgba(255,57,206,0.6)), 0 0 30px var(--head-glow, rgba(255,57,206,0.35));
+    }
+    .page-head.section-head { border-color: var(--head-color, var(--line)); box-shadow: var(--shadow), 0 0 22px var(--head-glow, transparent); }
+    .page-head.section-head p { text-align: center; }
+
+    /* [V3.0] Boton de informacion contextual */
+    .info-btn { font-weight: 950; font-style: italic; }
+    .info-body { display: grid; gap: 10px; text-align: left; }
+    .info-body h4 { margin: 6px 0 0; color: var(--cyan); }
+    .info-body ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--muted); }
+
+    /* [V3.0] Colores neon por categoria en Entrenar */
+    .sport-panel { border-width: 2px; }
+    .sport-panel h3 { color: var(--sport-color); text-shadow: 0 0 12px var(--sport-color); letter-spacing: 0.04em; text-transform: uppercase; }
+    .sport-panel { border-color: var(--sport-color); box-shadow: var(--shadow), 0 0 16px color-mix(in srgb, var(--sport-color) 45%, transparent); background: linear-gradient(160deg, color-mix(in srgb, var(--sport-color) 12%, transparent), rgba(5,0,8,0.6)); }
+
+    /* [V3.0] Rachas por medalla */
+    .achievements-panel.tier-bronze { background: linear-gradient(140deg, rgba(205,127,50,0.28), rgba(5,0,8,0.7)); border-color: #cd7f32; }
+    .achievements-panel.tier-silver { background: linear-gradient(140deg, rgba(192,192,192,0.28), rgba(5,0,8,0.7)); border-color: #d8d8e2; }
+    .achievements-panel.tier-gold { background: linear-gradient(140deg, rgba(255,201,60,0.32), rgba(5,0,8,0.7)); border-color: #ffc93c; }
+
+    /* [V3.0] Circuitos y series de aproximacion */
+    .circuit-card { border: 2px dashed var(--violet); border-radius: var(--radius); padding: 12px; display: grid; gap: 10px; background: rgba(100,38,255,0.10); box-shadow: 0 0 18px rgba(168,85,255,0.25); }
+    .circuit-card > .circuit-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .circuit-card .circuit-title { font-weight: 950; color: var(--violet); text-shadow: 0 0 10px rgba(168,85,255,0.7); }
+    .circuit-items { display: grid; gap: 8px; }
+    .pick-box { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--muted); }
+    .approach-form { display: grid; gap: 8px; padding: 10px; border: 1px dashed var(--line-strong); border-radius: var(--radius); margin-top: 8px; }
+    .drag-over { outline: 2px dashed var(--cyan); }
   </style>
 </head>
 <body>
@@ -598,6 +632,8 @@
       <button class="back" id="back-btn" type="button" title="Volver" hidden>‹</button>
       <div class="top-right-controls">
         <button class="availability-btn" id="availability-btn" type="button" title="Disponibilidad" hidden>%</button>
+        <!-- [V3.0] Informacion contextual solo en paginas internas -->
+        <button class="gear info-btn" id="info-btn" type="button" title="¿Cómo funciona esta sección?" hidden>i</button>
         <button class="gear" id="gear-btn" type="button" title="Opciones">⚙</button>
       </div>
     </div>
@@ -664,7 +700,7 @@
         <!-- [V2.9] Seccion de Logros / racha -->
         <section class="panel achievements-panel" id="achievements-panel">
           <div class="item-head">
-            <strong>🏅 Logros</strong>
+            <strong>🔥 Rachas</strong>
             <span class="pill warn" id="achievement-best">Mejor racha: 0</span>
           </div>
           <div class="streak-row">
@@ -683,8 +719,10 @@
               <button class="module-btn train color-action-1" data-go="entrenar">
                 <span class="module-icon bicep">
                   <svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M5.8 17.2c-1.6 0-2.8-1.3-2.8-2.8 0-1.5 1.1-2.7 2.5-2.8l2-.6c1-.3 1.7-1.2 1.7-2.3V6c0-1.1.9-2 2-2s2 .9 2 2v3c0 .6.4 1 1 1h1c1.1 0 2 .9 2 2v1c0 1.1-.9 2-2 2H11"/>
-                    <path d="M12 11c-1.5-1-3-1.5-4.5-1.5"/>
+                    <!-- [V3.0] Bicep minimalista flexionado -->
+                    <path d="M4 20v-4.2C4 13 6 11 8.6 11H12" stroke-width="2"/>
+                    <path d="M12 11V5.4C12 4.1 13 3 14.4 3S17 4.1 17 5.4V9c0 .6.5 1 1 1 1.7 0 3 1.4 3 3.1 0 2.6-2.1 4.7-4.7 4.7H12" stroke-width="2"/>
+                    <path d="M12 17.8c0-2.4-1.6-4.2-3.9-4.6" stroke-width="2"/>
                   </svg>
                 </span>
                 <span><span class="module-title">Entrenar</span><span class="module-sub">Ejecutar tus rutinas</span></span>
